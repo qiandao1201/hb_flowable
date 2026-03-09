@@ -42,6 +42,16 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 		<if test="status != null and status != ''">
 			AND status = #{status}
 		</if>
+		<!-- 流程角色过滤：根据params中的参数过滤部门 -->
+		<if test="params.isBusinessApproval != null and params.isBusinessApproval != ''">
+			AND d.dept_id = (select dept_id from sys_user where user_id = #{params.currentUserId})
+		</if>
+		<if test="params.isDeveloperApproval != null and params.isDeveloperApproval != ''">
+			<!-- isDeveloperApproval 不限制部门，显示所有部门 -->
+		</if>
+		<if test="params.isDeveloper != null and params.isDeveloper != ''">
+			AND d.dept_id = (select dept_id from sys_user where user_id = #{params.currentUserId})
+		</if>
 		<!-- 数据范围过滤 -->
 		${params.dataScope}
 		order by d.parent_id, d.order_num

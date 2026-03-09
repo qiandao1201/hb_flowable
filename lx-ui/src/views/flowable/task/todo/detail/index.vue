@@ -80,7 +80,7 @@
       <el-dialog :title="completeTitle" :visible.sync="completeOpen" width="60%" append-to-body>
         <el-form ref="taskForm" :model="taskForm">
           <el-form-item prop="targetKey">
-            <flow-user v-if="checkSendUser" :checkType="checkType" @handleUserSelect="handleUserSelect"></flow-user>
+            <flow-user v-if="checkSendUser" :checkType="checkType" :selectValues="selectValues" :flowProps="flowProps" @handleUserSelect="handleUserSelect"></flow-user>
             <flow-role v-if="checkSendRole" @handleRoleSelect="handleRoleSelect"></flow-role>
           </el-form-item>
           <el-form-item label="处理意见" label-width="80px" prop="comment"
@@ -191,6 +191,8 @@ export default {
       checkSendUser: false, // 是否展示人员选择模块
       checkSendRole: false,// 是否展示角色选择模块
       checkType: 'single', // 选择类型
+      selectValues: null, // 回显已选人员/角色数据
+      flowProps: {}, // 流程拓展属性，用于查询过滤
       taskName: null, // 任务节点
       startUser: null, // 发起人信息,
       multiInstanceVars: '', // 会签节点
@@ -379,6 +381,8 @@ export default {
     handleComplete() {
       this.completeOpen = true;
       this.completeTitle = "流程审批";
+      // 重置回显数据
+      this.selectValues = null;
       this.submitForm();
     },
     /** 用户审批任务 */
@@ -421,13 +425,24 @@ export default {
         })
         const data = res.data;
         if (data) {
+          // 提取流程拓展属性（用于查询过滤）
+          this.flowProps = {
+            isBusinessApproval: data.isBusinessApproval || null,
+            isDeveloperApproval: data.isDeveloperApproval || null,
+            isDeveloper: data.isDeveloper || null,
+            ...data
+          };
           if (data.dataType === 'dynamic') {
             if (data.type === 'assignee') { // 指定人员
               this.checkSendUser = true;
               this.checkType = "single";
+              // 传递回显数据
+              this.selectValues = data.assignee || null;
             } else if (data.type === 'candidateUsers') {  // 候选人员(多个)
               this.checkSendUser = true;
               this.checkType = "multiple";
+              // 传递回显数据
+              this.selectValues = data.candidateUsers || null;
             } else if (data.type === 'candidateGroups') { // 指定组(所属角色接收任务)
               this.checkSendRole = true;
             } else { // 会签
@@ -435,6 +450,8 @@ export default {
               this.multiInstanceVars = data.vars;
               this.checkSendUser = true;
               this.checkType = "multiple";
+              // 传递回显数据
+              this.selectValues = data[data.vars] || null;
             }
           }
         }

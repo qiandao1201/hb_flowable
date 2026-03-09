@@ -102,6 +102,12 @@ export default {
       default: 'multiple',
       required: true
     },
+    // 流程拓展属性（用于查询过滤）
+    flowProps: {
+      type: Object,
+      default: () => {},
+      required: false
+    },
   },
   data() {
     return {
@@ -161,6 +167,21 @@ export default {
     deptName(val) {
       this.$refs.tree.filter(val);
     },
+    // 监听流程拓展属性变化，重新查询
+    flowProps: {
+      handler(newVal) {
+        if (newVal) {
+          // 更新查询参数
+          if (newVal.deptId) {
+            this.queryParams.deptId = newVal.deptId;
+          }
+          // 重新查询
+          this.getList();
+        }
+      },
+      immediate: true,
+      deep: true
+    },
     selectValues: {
       handler(newVal) {
         if (StrUtil.isNotBlank(newVal)) {
@@ -190,6 +211,10 @@ export default {
     }
   },
   created() {
+    // 如果有流程拓展属性中的部门ID，设置默认查询部门
+    if (this.flowProps && this.flowProps.deptId) {
+      this.queryParams.deptId = this.flowProps.deptId;
+    }
     this.getList();
     this.getDeptTree();
   },
@@ -197,7 +222,13 @@ export default {
     /** 查询用户列表 */
     getList() {
       this.loading = true;
-      listUser(this.queryParams).then(response => {
+      // 提取flowProps中的properties参数到顶层
+      const flowParams = this.flowProps?.properties || {};
+      const params = {
+        ...this.queryParams,
+        ...flowParams
+      };
+      listUser(params).then(response => {
           this.userList = response.rows;
           this.total = response.total;
           this.loading = false;
@@ -206,7 +237,12 @@ export default {
     },
     /** 查询部门下拉树结构 */
     getDeptTree() {
-      deptTreeSelect().then(response => {
+      // 提取flowProps中的properties参数到顶层
+      const flowParams = this.flowProps?.properties || {};
+      const params = {
+        ...flowParams
+      };
+      deptTreeSelect(params).then(response => {
         this.deptOptions = response.data;
       });
     },

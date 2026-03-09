@@ -81,6 +81,19 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 		<if test="deptId != null and deptId != 0">
 			AND (u.dept_id = #{deptId} OR u.dept_id IN ( SELECT t.dept_id FROM sys_dept t WHERE find_in_set(#{deptId}, ancestors) ))
 		</if>
+		<!-- 流程角色过滤：根据params中的参数过滤用户 -->
+		<if test="params.isBusinessApproval != null and params.isBusinessApproval != ''">
+			AND u.dept_id = (select dept_id from sys_user where user_id = #{params.currentUserId})
+			AND exists (select 1 from sys_user_role ur join sys_role r on ur.role_id = r.role_id where ur.user_id = u.user_id and r.role_key = 'business_admin')
+		</if>
+		<if test="params.isDeveloperApproval != null and params.isDeveloperApproval != ''">
+			<!-- isDeveloperApproval 不限制部门，查询所有具有developer_admin角色的用户 -->
+			AND exists (select 1 from sys_user_role ur join sys_role r on ur.role_id = r.role_id where ur.user_id = u.user_id and r.role_key = 'developer_admin')
+		</if>
+		<if test="params.isDeveloper != null and params.isDeveloper != ''">
+			AND u.dept_id = (select dept_id from sys_user where user_id = #{params.currentUserId})
+			AND exists (select 1 from sys_user_role ur join sys_role r on ur.role_id = r.role_id where ur.user_id = u.user_id and r.role_key = 'developer')
+		</if>
 		<!-- 数据范围过滤 -->
 		${params.dataScope}
 	</select>

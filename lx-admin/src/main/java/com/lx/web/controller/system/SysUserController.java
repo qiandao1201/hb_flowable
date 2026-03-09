@@ -1,5 +1,6 @@
 package com.lx.web.controller.system;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.servlet.http.HttpServletResponse;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import com.lx.common.annotation.Log;
@@ -56,10 +58,21 @@ public class SysUserController extends BaseController
     /**
      * 获取用户列表
      */
-    @PreAuthorize("@ss.hasPermi('system:user:list')")
+//    @PreAuthorize("@ss.hasPermi('system:user:list')")
     @GetMapping("/list")
-    public TableDataInfo list(SysUser user)
+    public TableDataInfo list(SysUser user,
+            @RequestParam(value = "isBusinessApproval", required = false) String isBusinessApproval,
+            @RequestParam(value = "isDeveloperApproval", required = false) String isDeveloperApproval,
+            @RequestParam(value = "isDeveloper", required = false) String isDeveloper)
     {
+        // 将流程角色过滤参数放入params中
+        if (user.getParams() == null) {
+            user.setParams(new HashMap<>());
+        }
+        user.getParams().put("isBusinessApproval", isBusinessApproval);
+        user.getParams().put("isDeveloperApproval", isDeveloperApproval);
+        user.getParams().put("isDeveloper", isDeveloper);
+        
         startPage();
         List<SysUser> list = userService.selectUserList(user);
         return getDataTable(list);
@@ -247,10 +260,21 @@ public class SysUserController extends BaseController
     /**
      * 获取部门树列表
      */
-    @PreAuthorize("@ss.hasPermi('system:user:list')")
+//    @PreAuthorize("@ss.hasPermi('system:user:list')")
     @GetMapping("/deptTree")
-    public AjaxResult deptTree(SysDept dept)
+    public AjaxResult deptTree(SysDept dept,
+            @RequestParam(value = "isBusinessApproval", required = false) String isBusinessApproval,
+            @RequestParam(value = "isDeveloperApproval", required = false) String isDeveloperApproval,
+            @RequestParam(value = "isDeveloper", required = false) String isDeveloper)
     {
+        // 将流程角色过滤参数放入params中
+        if (dept.getParams() == null) {
+            dept.setParams(new HashMap<>());
+        }
+        dept.getParams().put("isBusinessApproval", isBusinessApproval);
+        dept.getParams().put("isDeveloperApproval", isDeveloperApproval);
+        dept.getParams().put("isDeveloper", isDeveloper);
+        
         return success(deptService.selectDeptTreeList(dept));
     }
 }

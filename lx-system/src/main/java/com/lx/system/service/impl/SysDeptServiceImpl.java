@@ -1,6 +1,7 @@
 package com.lx.system.service.impl;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -42,7 +43,7 @@ public class SysDeptServiceImpl implements ISysDeptService
      * @return 部门信息集合
      */
     @Override
-    @DataScope(deptAlias = "d")
+//    @DataScope(deptAlias = "d")
     public List<SysDept> selectDeptList(SysDept dept)
     {
         return deptMapper.selectDeptList(dept);
@@ -57,6 +58,11 @@ public class SysDeptServiceImpl implements ISysDeptService
     @Override
     public List<TreeSelect> selectDeptTreeList(SysDept dept)
     {
+        // 设置当前登录用户ID，用于流程角色过滤
+        if (dept.getParams() == null) {
+            dept.setParams(new HashMap<>());
+        }
+        dept.getParams().put("currentUserId", SecurityUtils.getUserId());
         List<SysDept> depts = SpringUtils.getAopProxy(this).selectDeptList(dept);
         return buildDeptTreeSelect(depts);
     }

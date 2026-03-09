@@ -24,7 +24,7 @@
       </el-tabs>
       <!--选择流程接收人-->
       <el-dialog :title="taskTitle" :visible.sync="taskOpen" width="65%" append-to-body>
-        <flow-user v-if="checkSendUser" :checkType="checkType"  @handleUserSelect="handleUserSelect"/>
+        <flow-user v-if="checkSendUser" :checkType="checkType" :flowProps="flowProps" @handleUserSelect="handleUserSelect"/>
         <flow-role v-if="checkSendRole" @handleRoleSelect="handleRoleSelect"/>
         <span slot="footer" class="dialog-footer">
           <el-button @click="taskOpen = false">取 消</el-button>
@@ -74,6 +74,7 @@ export default {
       checkValues: null, // 选中任务接收人员数据
       formData: {}, // 填写的表单数据,
       multiInstanceVars: '', // 会签节点
+      flowProps: {}, // 流程拓展属性，用于查询过滤
       formJson: {} // 表单json
     };
   },
@@ -119,6 +120,14 @@ export default {
         getNextFlowNodeByStart({deploymentId: this.deployId, variables: formData}).then(res => {
           const data = res.data;
           if (data) {
+            // 提取流程拓展属性（用于查询过滤）
+            this.flowProps = {
+              isBusinessApproval: data.isBusinessApproval || null,
+              isDeveloperApproval: data.isDeveloperApproval || null,
+              isDeveloper: data.isDeveloper || null,
+              // 可以添加其他需要的拓展属性
+              ...data
+            };
             this.formData = formData;
             if (data.dataType === 'dynamic') {
               if (data.type === 'assignee') { // 指定人员

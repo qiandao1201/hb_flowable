@@ -1,9 +1,12 @@
 package com.lx.system.service.impl;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.validation.Validator;
+
+import com.lx.common.core.domain.model.LoginUser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -72,9 +75,22 @@ public class SysUserServiceImpl implements ISysUserService
      * @return 用户信息集合信息
      */
     @Override
-    @DataScope(deptAlias = "d", userAlias = "u")
+//    @DataScope(deptAlias = "d", userAlias = "u")
     public List<SysUser> selectUserList(SysUser user)
     {
+        // 设置当前登录用户ID和流程角色过滤参数
+        if (user.getParams() == null) {
+            user.setParams(new HashMap<>());
+        }
+        LoginUser loginUser = SecurityUtils.getLoginUser();
+        user.getParams().put("currentUserId", SecurityUtils.getUserId());
+        // 将FlowUserQueryDTO中的参数传递到params中
+        String isBusinessApproval = (String) user.getParams().get("isBusinessApproval");
+        String isDeveloperApproval = (String) user.getParams().get("isDeveloperApproval");
+        String isDeveloper = (String) user.getParams().get("isDeveloper");
+        user.getParams().put("isBusinessApproval", isBusinessApproval);
+        user.getParams().put("isDeveloperApproval", isDeveloperApproval);
+        user.getParams().put("isDeveloper", isDeveloper);
         return userMapper.selectUserList(user);
     }
 

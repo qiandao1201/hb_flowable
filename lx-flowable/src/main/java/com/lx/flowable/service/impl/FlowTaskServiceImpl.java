@@ -205,6 +205,19 @@ public class FlowTaskServiceImpl extends FlowServiceFactory implements IFlowTask
         // 设置驳回意见
         currentTaskIds.forEach(item -> taskService.addComment(item, task.getProcessInstanceId(), FlowComment.REJECT.getType(), flowTaskVo.getComment()));
 
+        // 获取目标节点的原始待办人（从历史任务实例中获取）
+        String targetAssignee = null;
+        List<HistoricTaskInstance> targetHistoricTaskList = historyService.createHistoricTaskInstanceQuery()
+                .processInstanceId(task.getProcessInstanceId())
+                .taskDefinitionKey(targetIds.get(0))
+                .finished()
+                .orderByHistoricTaskInstanceEndTime()
+                .desc()
+                .list();
+        if (CollectionUtils.isNotEmpty(targetHistoricTaskList)) {
+            targetAssignee = targetHistoricTaskList.get(0).getAssignee();
+        }
+
         try {
             // 如果父级任务多于 1 个，说明当前节点不是并行节点，原因为不考虑多对多情况
             if (targetIds.size() > 1) {
@@ -224,6 +237,19 @@ public class FlowTaskServiceImpl extends FlowServiceFactory implements IFlowTask
             throw new CustomException("未找到流程实例，流程可能已发生变化");
         } catch (FlowableException e) {
             throw new CustomException("无法取消或开始活动");
+        }
+
+        // 恢复目标节点的原始待办人
+        if (StringUtils.isNotBlank(targetAssignee)) {
+            // 查询新产生的目标任务
+            List<Task> newTargetTasks = taskService.createTaskQuery()
+                    .processInstanceId(task.getProcessInstanceId())
+                    .taskDefinitionKey(targetIds.get(0))
+                    .list();
+            for (Task newTargetTask : newTargetTasks) {
+                // 设置原始待办人
+                taskService.setAssignee(newTargetTask.getId(), targetAssignee);
+            }
         }
 
     }
@@ -293,6 +319,19 @@ public class FlowTaskServiceImpl extends FlowServiceFactory implements IFlowTask
         // 设置回退意见
         currentTaskIds.forEach(currentTaskId -> taskService.addComment(currentTaskId, task.getProcessInstanceId(), FlowComment.REBACK.getType(), flowTaskVo.getComment()));
 
+        // 获取目标节点的原始待办人（从历史任务实例中获取）
+        String targetAssignee = null;
+        List<HistoricTaskInstance> targetHistoricTaskList = historyService.createHistoricTaskInstanceQuery()
+                .processInstanceId(task.getProcessInstanceId())
+                .taskDefinitionKey(flowTaskVo.getTargetKey())
+                .finished()
+                .orderByHistoricTaskInstanceEndTime()
+                .desc()
+                .list();
+        if (CollectionUtils.isNotEmpty(targetHistoricTaskList)) {
+            targetAssignee = targetHistoricTaskList.get(0).getAssignee();
+        }
+
         try {
             // 1 对 1 或 多 对 1 情况，currentIds 当前要跳转的节点列表(1或多)，targetKey 跳转到的节点(1)
             runtimeService.createChangeActivityStateBuilder()
@@ -302,6 +341,19 @@ public class FlowTaskServiceImpl extends FlowServiceFactory implements IFlowTask
             throw new CustomException("未找到流程实例，流程可能已发生变化");
         } catch (FlowableException e) {
             throw new CustomException("无法取消或开始活动");
+        }
+
+        // 恢复目标节点的原始待办人
+        if (StringUtils.isNotBlank(targetAssignee)) {
+            // 查询新产生的目标任务
+            List<Task> newTargetTasks = taskService.createTaskQuery()
+                    .processInstanceId(task.getProcessInstanceId())
+                    .taskDefinitionKey(flowTaskVo.getTargetKey())
+                    .list();
+            for (Task newTargetTask : newTargetTasks) {
+                // 设置原始待办人
+                taskService.setAssignee(newTargetTask.getId(), targetAssignee);
+            }
         }
     }
 
@@ -1017,8 +1069,104 @@ public class FlowTaskServiceImpl extends FlowServiceFactory implements IFlowTask
                 flowNextDto.setType(userType);
                 flowNextDto.setDataType(dataType);
             }
+            // 获取流程拓展属性（通过FlowableUtils获取）
+            Map<String, Object> properties = getFlowElementProperties(userTask);
+            if (properties != null && !properties.isEmpty()) {
+                flowNextDto.setProperties(properties);
+            }
         }
         return AjaxResult.success(flowNextDto);
+    }
+
+    /**
+     * 获取FlowElement的拓展属性
+     * 对应流程设计器中配置的properties扩展元素
+     *
+     * @param userTask 用户任务节点
+     * @return 拓展属性Map
+     */
+    private Map<String, Object> getFlowElementProperties(UserTask userTask) {
+        try {
+            // 获取所有扩展元素，打印所有 key
+            Map<String, List<ExtensionElement>> extensionElements = userTask.getExtensionElements();
+            if (extensionElements == null || extensionElements.isEmpty()) {
+                log.debug("UserTask {} 没有扩展元素", userTask.getId());
+                return null;
+            }
+            log.info("UserTask {} 的扩展元素 keys: {}", userTask.getId(), extensionElements.keySet());
+
+            // 遍历所有扩展元素，查找包含 "properties" 的
+            for (Map.Entry<String, List<ExtensionElement>> entry : extensionElements.entrySet()) {
+                log.info("扩展元素 key: {}, 数量: {}", entry.getKey(), entry.getValue().size());
+                for (ExtensionElement elem : entry.getValue()) {
+                    log.info("  元素 name: {}", elem.getName());
+                    // 查看子元素
+                    Map<String, List<ExtensionElement>> childElements = elem.getChildElements();
+                    if (childElements != null) {
+                        log.info("    子元素 keys: {}", childElements.keySet());
+                    }
+                }
+            }
+
+            // 直接获取名为 "properties" 的扩展元素
+            ExtensionElement propertiesElement = FlowableUtils.getExtensionElementFromFlowElementByName(userTask, "properties");
+            if (propertiesElement == null) {
+                // 尝试带命名空间的方式
+                propertiesElement = FlowableUtils.getExtensionElementFromFlowElementByName(userTask, "flowable:properties");
+            }
+
+            if (propertiesElement == null) {
+                log.debug("UserTask {} 没有找到 properties 扩展元素", userTask.getId());
+                return null;
+            }
+
+            // 解析 property 子元素
+            Map<String, List<ExtensionElement>> childElements = propertiesElement.getChildElements();
+            if (childElements == null) {
+                log.debug("propertiesElement 没有子元素");
+                return null;
+            }
+            log.info("properties 子元素 keys: {}", childElements.keySet());
+
+            if (!childElements.containsKey("property") && !childElements.containsKey("flowable:property")) {
+                return null;
+            }
+
+            // 获取 property 列表（可能带命名空间也可能不带）
+            String propertyKey = childElements.containsKey("property") ? "property" : "flowable:property";
+            List<ExtensionElement> propertyList = childElements.get(propertyKey);
+            if (propertyList == null || propertyList.isEmpty()) {
+                return null;
+            }
+            // 解析每个 property 元素的属性
+            Map<String, Object> result = new HashMap<>();
+            for (ExtensionElement property : propertyList) {
+                // 获取 name 属性
+                String name = null;
+                String value = null;
+                Map<String, List<ExtensionAttribute>> attributes = property.getAttributes();
+                if (attributes != null) {
+                    List<ExtensionAttribute> nameAttr = attributes.get("name");
+                    if (nameAttr != null && !nameAttr.isEmpty()) {
+                        name = nameAttr.get(0).getValue();
+                    }
+                    List<ExtensionAttribute> valueAttr = attributes.get("value");
+                    if (valueAttr != null && !valueAttr.isEmpty()) {
+                        value = valueAttr.get(0).getValue();
+                    }
+                }
+                if (name != null) {
+                    result.put(name, value);
+                }
+            }
+            if (!result.isEmpty()) {
+                log.info("获取到扩展属性: {}", result);
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("获取流程拓展属性失败", e);
+            return null;
+        }
     }
 
     /**
@@ -1083,7 +1231,7 @@ public class FlowTaskServiceImpl extends FlowServiceFactory implements IFlowTask
                 flowViewerDto.setCompleted(false);
                 flowViewerList.add(flowViewerDto);
             });
-            Map<String, Object> result = new HashMap();
+            Map<String, Object> result = new HashMap<>();
             // xmlData 数据
             ProcessDefinition definition = repositoryService.createProcessDefinitionQuery().deploymentId(deployId).singleResult();
             InputStream inputStream = repositoryService.getResourceAsStream(definition.getDeploymentId(), definition.getResourceName());
