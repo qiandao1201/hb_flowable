@@ -139,6 +139,9 @@ public class FlowTaskServiceImpl extends FlowServiceFactory implements IFlowTask
         // 深度优先算法思想：延边迭代深入
         List<UserTask> parentUserTaskList = FlowableUtils.iteratorFindParentUserTasks(source, null, null);
         if (parentUserTaskList == null || parentUserTaskList.size() == 0) {
+            // 当前节点为初始任务节点，不能驳回，但可以添加驳回意见记录
+            taskService.addComment(task.getId(), task.getProcessInstanceId(), FlowComment.REJECT.getType(),
+                    flowTaskVo.getComment());
             throw new CustomException("当前节点为初始任务节点，不能驳回");
         }
         // 获取活动 ID 即节点 Key
@@ -509,10 +512,19 @@ public class FlowTaskServiceImpl extends FlowServiceFactory implements IFlowTask
     public AjaxResult myProcess(FlowQueryVo queryVo) {
         Page<FlowTaskDto> page = new Page<>();
         Long userId = SecurityUtils.getLoginUser().getUser().getUserId();
-        HistoricProcessInstanceQuery historicProcessInstanceQuery = historyService.createHistoricProcessInstanceQuery()
-                .startedBy(userId.toString())
-                .orderByProcessInstanceStartTime()
-                .desc();
+        // 判断当前登录者的角色
+        List<SysRole> sysRoles = sysRoleService.selectRolesByUserId(userId);
+        HistoricProcessInstanceQuery historicProcessInstanceQuery = null;
+        // 当角色为admin管理员时，查询所有流程
+        if (sysRoles != null && sysRoles.stream().anyMatch(SysRole::isAdmin)) {
+            historicProcessInstanceQuery = historyService.createHistoricProcessInstanceQuery().orderByProcessInstanceStartTime()
+                    .desc();
+        } else {
+            historicProcessInstanceQuery = historyService.createHistoricProcessInstanceQuery()
+                    .startedBy(userId.toString())
+                    .orderByProcessInstanceStartTime()
+                    .desc();
+        }
         List<HistoricProcessInstance> historicProcessInstances = historicProcessInstanceQuery.listPage(queryVo.getPageSize() * (queryVo.getPageNum() - 1), queryVo.getPageSize());
         page.setTotal(historicProcessInstanceQuery.count());
         List<FlowTaskDto> flowList = new ArrayList<>();
@@ -553,6 +565,19 @@ public class FlowTaskServiceImpl extends FlowServiceFactory implements IFlowTask
                         flowTask.setAssigneeDeptName(Objects.nonNull(sysUser.getDept()) ? sysUser.getDept().getDeptName() : "");
                     }
                 }
+                // 查询该流程是否有驳回意见（通过当前任务 ID 查询）
+                List<Comment> commentList = taskService.getProcessInstanceComments(hisIns.getId());
+                for (Comment comment : commentList) {
+                    if (taskList.get(0).getId().equals(comment.getTaskId()) && FlowComment.REJECT.getType().equals(comment.getType())) {
+                        // 如果存在驳回意见，设置为驳回状态
+                        flowTask.setStatus(2);
+                        break;
+                    }
+                }
+                // 进行中的任务默认为状态 0
+                if (flowTask.getStatus() == null) {
+                    flowTask.setStatus(0);
+                }
             } else {
                 List<HistoricTaskInstance> historicTaskInstance = historyService.createHistoricTaskInstanceQuery().processInstanceId(hisIns.getId()).orderByHistoricTaskInstanceEndTime().desc().list();
                 flowTask.setTaskId(historicTaskInstance.get(0).getId());
@@ -565,6 +590,19 @@ public class FlowTaskServiceImpl extends FlowServiceFactory implements IFlowTask
                         flowTask.setAssigneeName(sysUser.getNickName());
                         flowTask.setAssigneeDeptName(Objects.nonNull(sysUser.getDept()) ? sysUser.getDept().getDeptName() : "");
                     }
+                }
+                // 查询该流程是否有驳回意见（通过历史任务 ID 查询）
+                List<Comment> commentList = taskService.getProcessInstanceComments(hisIns.getId());
+                for (Comment comment : commentList) {
+                    if (historicTaskInstance.get(0).getId().equals(comment.getTaskId()) && FlowComment.REJECT.getType().equals(comment.getType())) {
+                        // 如果存在驳回意见，设置为驳回状态
+                        flowTask.setStatus(2);
+                        break;
+                    }
+                }
+                // 已完成的任务默认为状态 1
+                if (flowTask.getStatus() == null) {
+                    flowTask.setStatus(1);
                 }
             }
             flowList.add(flowTask);
@@ -722,6 +760,20 @@ public class FlowTaskServiceImpl extends FlowServiceFactory implements IFlowTask
             flowTask.setStartUserId(startUser.getUserId().toString());
             flowTask.setStartUserName(startUser.getNickName());
             flowTask.setStartDeptName(Objects.nonNull(startUser.getDept()) ? startUser.getDept().getDeptName() : "");
+
+            // todo 查询该任务是否有驳回意见（通过流程实例 ID 查询）
+            List<Comment> commentList = taskService.getProcessInstanceComments(task.getProcessInstanceId());
+            for (Comment comment : commentList) {
+                if (task.getId().equals(comment.getTaskId()) && FlowComment.REJECT.getType().equals(comment.getType())) {
+                    // 如果存在驳回意见，说明该任务是被驳回的
+                    flowTask.setStatus(2);
+                    break;
+                }
+            }
+            // 默认进行中的任务状态为 0
+            if (flowTask.getStatus() == null) {
+                flowTask.setStatus(0);
+            }
             flowList.add(flowTask);
         }
 
@@ -778,6 +830,19 @@ public class FlowTaskServiceImpl extends FlowServiceFactory implements IFlowTask
             flowTask.setStartUserId(startUser.getNickName());
             flowTask.setStartUserName(startUser.getNickName());
             flowTask.setStartDeptName(Objects.nonNull(startUser.getDept()) ? startUser.getDept().getDeptName() : "");
+            // todo 查询该任务是否有驳回意见
+            List<Comment> commentList = taskService.getProcessInstanceComments(histTask.getProcessInstanceId());
+            for (Comment comment : commentList) {
+                if (histTask.getId().equals(comment.getTaskId()) && FlowComment.REJECT.getType().equals(comment.getType())) {
+                    // 如果存在驳回意见，设置为驳回状态
+                    flowTask.setStatus(2);
+                    break;
+                }
+            }
+            // 已完成的任务默认为状态 1
+            if (flowTask.getStatus() == null) {
+                flowTask.setStatus(1);
+            }
             hisTaskList.add(flowTask);
         }
         page.setTotal(taskInstanceQuery.count());

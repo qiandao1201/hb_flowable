@@ -99,4 +99,8 @@ public class FlowTaskDto implements Serializable {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date finishTime;
 
+    // todo 列表展示状态字段
+    @ApiModelProperty("任务状态：0-进行中，1-已完成，2-已驳回")
+    private Integer status;
+
 }
